@@ -7,7 +7,7 @@ CREATE TABLE email (
     body_type TEXT NOT NULL,
     body TEXT NOT NULL,
     count_try_send INTEGER,
-    time_first_send INTEGER NOT NULL,
+    time_registry INTEGER NOT NULL,
     time_send INTEGER,
     err TEXT
 );

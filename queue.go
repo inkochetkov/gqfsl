@@ -3,9 +3,9 @@ package gqfsl
 type Queue struct {
 	config Config
 
-	emailServ *emailServer
-	sql       *sqLite
-	cron      *cron
+	emailServer *emailServer
+	sql         *sqLite
+	cron        *cron
 }
 
 func New(config Config) (*Queue, error) {
@@ -30,25 +30,33 @@ func New(config Config) (*Queue, error) {
 
 // Add delayed dispatch
 func (q *Queue) Add(message Message) error {
-	return nil
+	return q.sql.Add(message)
 }
 
 // Send immediate dispatch
 func (q *Queue) Send(message Message) error {
-	return nil
+
+	err := q.emailServer.Send(message)
+	if err == nil {
+		return nil
+	}
+
+	return q.sql.Add(message)
 }
 
 // Get  get a specific message
 func (q *Queue) Get(ID int64) (Message, error) {
+	// TODO: implementation
 	return Message{}, nil
 }
 
 // List get list of messages
 func (q *Queue) List() ([]Message, error) {
+	// TODO: implementation
 	return nil, nil
 }
 
 // Delete delete a specific message
 func (q *Queue) Delete(ID int64) error {
-	return nil
+	return q.sql.Delete(ID)
 }

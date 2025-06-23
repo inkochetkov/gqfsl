@@ -43,4 +43,5 @@ type CronConf struct {
 type SqlConf struct {
 	// BaseName, name base, default "email.sqlite"
 	BaseName string
+	Path     string
 }
