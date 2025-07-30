@@ -1,22 +1,56 @@
 package gqfsl
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	p "path"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/inkochetkov/exist"
+	"github.com/inkochetkov/ujt"
+	"github.com/jmoiron/sqlx"
 	_ "github.com/mattn/go-sqlite3"
 )
 
+type messageDB struct {
+	ID int64 `db:"id"`
+
+	From     string `db:"from"`
+	To       string `db:"to"`
+	Subject  string `db:"subject"`
+	TypeBody string `db:"type_body"`
+	Body     string `db:"body"`
+
+	Status []byte `db:"status"`
+}
+
 type sqLite struct {
-	mu   sync.Mutex
-	conn *sql.DB
+	mu     sync.Mutex
+	conn   *sqlx.DB
+	config Config
 }
 
 const (
+	getEmail = `
+	SELECT
+		*
+	FROM
+		email
+	WHERE
+		id = $1		
+	`
+	listEmail = `
+	SELECT
+		*
+	FROM
+		email
+	WHERE
+		count_try_send < $1
+		AND time_send is null
+	`
 	deleteEmail = `
 		Delete 
 			email
@@ -32,6 +66,74 @@ const (
 		time_registry, 
 	) VALUES ($1, $2, $3, $4, $5, $6)`
 )
+
+func (s *sqLite) Update(m Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// TODO: implementation
+	return nil
+}
+
+func (s *sqLite) Get(ID int64) (*Message, error) {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Sql.Timeout)
+	defer cancel()
+
+	mes := &messageDB{}
+	err := s.conn.QueryRowxContext(ctx, getEmail, ID).StructScan(mes)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	return convertFromDB(mes)
+}
+
+func (s *sqLite) List() ([]*Message, error) {
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.Sql.Timeout)
+	defer cancel()
+
+	rows, err := s.conn.QueryxContext(ctx, listEmail, s.config.Cron.CountTry)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var messages []*Message
+
+	for rows.Next() {
+		mes := &messageDB{}
+		err := rows.StructScan(mes)
+		if err != nil {
+			return nil, err
+		}
+		m, err := convertFromDB(mes)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, m)
+
+	}
+
+	err = rows.Err()
+	if err != nil {
+		return nil, err
+	}
+
+	return messages, nil
+}
 
 func (s *sqLite) Delete(ID int64) error {
 
@@ -82,10 +184,10 @@ func startSQL(config Config) (*sqLite, error) {
 		return nil, err
 	}
 
-	return &sqLite{conn: conn}, nil
+	return &sqLite{conn: conn, config: config}, nil
 }
 
-func migration(conn *sql.DB) error {
+func migration(conn *sqlx.DB) error {
 
 	_, err := conn.Exec(`
 CREATE TABLE IF NOT EXISTS email (
@@ -128,6 +230,27 @@ func checkFileBD(path, fileName string) (string, error) {
 	return url, nil
 }
 
-func connectSqLite(dataSourcePath string) (*sql.DB, error) {
-	return sql.Open("sqlite3", dataSourcePath)
+func connectSqLite(dataSourcePath string) (*sqlx.DB, error) {
+	return sqlx.Open("sqlite3", dataSourcePath)
+}
+
+func convertFromDB(mes *messageDB) (*Message, error) {
+
+	m := &Message{
+		ID:       strconv.FormatInt(mes.ID, 10),
+		From:     mes.From,
+		To:       mes.To,
+		Subject:  mes.Subject,
+		TypeBody: mes.TypeBody,
+		Body:     mes.TypeBody,
+	}
+
+	status, err := ujt.UnmarshaledJSONToMap(mes.Status)
+	if err != nil {
+		return nil, err
+	}
+
+	m.Status = status
+
+	return m, nil
 }

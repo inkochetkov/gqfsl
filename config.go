@@ -44,4 +44,12 @@ type SqlConf struct {
 	// BaseName, name base, default "email.sqlite"
 	BaseName string
 	Path     string
+	//
+	Timeout time.Duration
+}
+
+func checkDefaultConfig(cgf Config) Config {
+
+	// TODO: implementation
+	return cgf
 }

@@ -8,7 +8,9 @@ type Queue struct {
 	cron        *cron
 }
 
-func New(config Config) (*Queue, error) {
+func New(cgf Config) (*Queue, error) {
+
+	config := checkDefaultConfig(cgf)
 
 	emailServer, err := connEmailServer(config)
 	if err != nil {

@@ -2,6 +2,18 @@ package gqfsl
 
 import "gopkg.in/gomail.v2"
 
+type Message struct {
+	ID string
+
+	From     string
+	To       string
+	Subject  string
+	TypeBody string // "text/plain" or "text/html", default "text/plain"
+	Body     string
+
+	Status map[string]any
+}
+
 type emailServer struct {
 	conn *gomail.Dialer
 }
