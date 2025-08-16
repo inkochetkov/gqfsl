@@ -61,7 +61,7 @@ func checkDefaultConfig(cgf Config) Config {
 
 	// Cron
 	if cgf.Cron.DurationRetry == 0 {
-		cgf.Cron.DurationRetry = defaultCronCountTry
+		cgf.Cron.DurationRetry = defaultCronDurationRetry
 	}
 	if cgf.Cron.DurationSaveFailMessage == 0 {
 		cgf.Cron.DurationSaveFailMessage = defaultCronDurationSaveFailMessage
