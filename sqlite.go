@@ -27,10 +27,10 @@ type messageDB struct {
 	Status []byte `db:"status"`
 }
 
-func migration(conn *sqlx.DB) error {
+func migration(conn *sqlx.DB, baseName string) error {
 
 	_, err := conn.Exec(`
-CREATE TABLE IF NOT EXISTS email (
+CREATE TABLE IF NOT EXISTS ` + baseName + ` (
 
     "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
 
@@ -66,7 +66,7 @@ func (s *sqLite) Update(m Message) error {
 
 	statement, err := s.conn.Prepare(`
 	UPDATE 
-		email 
+		` + s.config.Sql.BaseName + `
 	SET 
 		"from" = ?,
 		"to" = ?,
@@ -106,7 +106,7 @@ func (s *sqLite) Get(ID int64) (*Message, error) {
 	 	SELECT
 			*
 		FROM
-			email
+			`+s.config.Sql.BaseName+`
 		WHERE
 			id = ?`, ID).StructScan(mes)
 	if err != nil {
@@ -127,7 +127,7 @@ func (s *sqLite) List() ([]*Message, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.config.Sql.Timeout)
 	defer cancel()
 
-	rows, err := s.conn.QueryxContext(ctx, "SELECT * FROM email")
+	rows, err := s.conn.QueryxContext(ctx, "SELECT * FROM "+s.config.Sql.BaseName)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -165,7 +165,7 @@ func (s *sqLite) Delete(ID int64) error {
 
 	statement, err := s.conn.Prepare(`
 		Delete FROM
-			email
+			` + s.config.Sql.BaseName + `
 		WHERE 
 			id = ?`)
 	if err != nil {
@@ -196,7 +196,7 @@ func (s *sqLite) Add(m Message) error {
 	}
 
 	statement, err := s.conn.Prepare(`
-	INSERT INTO email (
+	INSERT INTO ` + s.config.Sql.BaseName + ` (
 		"from", 
 		"to", 
 		subject,
@@ -223,7 +223,7 @@ func (s *sqLite) Add(m Message) error {
 func startSQL(config Config) (*sqLite, error) {
 
 	// check this file base
-	dataSourcePath, err := checkFileBD(config.Sql.Path, config.Sql.BaseName)
+	dataSourcePath, err := checkFileBD(config.Sql.Path, config.Sql.BaseName+".sqlite")
 	if err != nil {
 		return nil, err
 	}
@@ -233,7 +233,7 @@ func startSQL(config Config) (*sqLite, error) {
 		return nil, err
 	}
 	// check migration
-	err = migration(conn)
+	err = migration(conn, config.Sql.BaseName)
 	if err != nil {
 		return nil, err
 	}

@@ -14,7 +14,7 @@ func TestSQLiteCRUD(t *testing.T) {
 	// Setup in-memory database
 	cfg := Config{
 		Sql: SqlConf{
-			BaseName: "email.sqlite",
+			BaseName: "email",
 			Timeout:  1 * time.Second,
 			Path:     "./",
 		},

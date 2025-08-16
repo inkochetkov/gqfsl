@@ -52,7 +52,7 @@ const (
 	defaultCronCountTry                = 100
 	defaultCronDurationSaveFailMessage = 24 * time.Hour
 	defaultCronDurationRetry           = 5 * time.Minute
-	defaultSqlBaseName                 = "email.sqlite"
+	defaultSqlBaseName                 = "email"
 	defaultSqlTimeout                  = 5 * time.Second
 	defaultSqlPath                     = "."
 )
@@ -80,7 +80,9 @@ func checkDefaultConfig(cgf Config) Config {
 
 	cgf.Sql.BaseName = defaultSqlBaseName
 
-	// TODO: add custom name support , if cgf.Sql.BaseName == "" {}
+	if cgf.Sql.BaseName == "" {
+		cgf.Sql.BaseName = defaultSqlBaseName
+	}
 
 	return cgf
 }
