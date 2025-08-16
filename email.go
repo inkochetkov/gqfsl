@@ -8,7 +8,7 @@ type Message struct {
 	From     string
 	To       string
 	Subject  string
-	TypeBody string // "text/plain" or "text/html", default "text/plain"
+	BodyType string // "text/plain" or "text/html", default "text/plain"
 	Body     string
 
 	Status map[string]any
@@ -34,7 +34,7 @@ func (e *emailServer) Send(message Message) error {
 	m.SetHeader("From", message.From)
 	m.SetHeader("To", message.To)
 	m.SetHeader("Subject", message.Subject)
-	m.SetBody(message.TypeBody, message.Body)
+	m.SetBody(message.BodyType, message.Body)
 
 	return e.conn.DialAndSend(m)
 }

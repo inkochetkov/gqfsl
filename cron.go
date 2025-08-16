@@ -84,9 +84,8 @@ func (c *cron) processMessage(msg *Message) {
 	}
 
 	// Updating the attempt counter
-	count, _ := msg.Status["count_try_send"].(int)
-	count++
-	msg.Status["count_try_send"] = count
+	count, _ := msg.Status["count_try_send"].(float64)
+	msg.Status["count_try_send"] = count + 1
 
 	// Trying to send a message
 	err := c.emailServer.Send(*msg)
@@ -94,13 +93,13 @@ func (c *cron) processMessage(msg *Message) {
 		// Remember the mistake
 		msg.Status["error"] = err.Error()
 		msg.Status["last_try"] = time.Now().Unix()
-		log.Printf("cron: failed to send message %s: %v\n", msg.ID, err)
+		// log.Printf("cron: failed to send message %s: %v\n", msg.ID, err)
 	} else {
 		// Successful Sending Mark
 		msg.Status["time_send"] = time.Now().Unix()
 		msg.Status["status"] = "sent"
 		delete(msg.Status, "error")
-		log.Printf("cron: successfully sent message %s\n", msg.ID)
+		// log.Printf("cron: successfully sent message %s\n", msg.ID)
 	}
 
 	// Updating the message in the database

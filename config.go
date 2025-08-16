@@ -71,15 +71,16 @@ func checkDefaultConfig(cgf Config) Config {
 	}
 
 	// Sql
-	if cgf.Sql.BaseName == "" {
-		cgf.Sql.BaseName = defaultSqlBaseName
-	}
 	if cgf.Sql.Timeout == 0 {
 		cgf.Sql.Timeout = defaultSqlTimeout
 	}
 	if cgf.Sql.Path == "" {
 		cgf.Sql.Path = defaultSqlPath
 	}
+
+	cgf.Sql.BaseName = defaultSqlBaseName
+
+	// TODO: add custom name support , if cgf.Sql.BaseName == "" {}
 
 	return cgf
 }

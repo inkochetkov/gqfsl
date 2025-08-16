@@ -11,9 +11,8 @@ import (
 	"time"
 
 	"github.com/inkochetkov/exist"
-	"github.com/inkochetkov/ujt"
 	"github.com/jmoiron/sqlx"
-	_ "github.com/mattn/go-sqlite3"
+	_ "modernc.org/sqlite"
 )
 
 type messageDB struct {
@@ -22,14 +21,32 @@ type messageDB struct {
 	From     string `db:"from"`
 	To       string `db:"to"`
 	Subject  string `db:"subject"`
-	TypeBody string `db:"type_body"`
+	BodyType string `db:"body_type"`
 	Body     string `db:"body"`
 
 	Status []byte `db:"status"`
+}
 
-	CountTrySend int    `db:"count_try_send"`
-	TimeSend     int64  `db:"time_send"`
-	Err          string `db:"err"`
+func migration(conn *sqlx.DB) error {
+
+	_, err := conn.Exec(`
+CREATE TABLE IF NOT EXISTS email (
+
+    "id" INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+
+    "from" TEXT NOT NULL,
+    "to" TEXT NOT NULL,
+    "subject" TEXT NOT NULL,
+    "body_type" TEXT NOT NULL,
+    "body" TEXT NOT NULL,
+
+	"status" BLOB
+);`)
+	if err != nil {
+		return fmt.Errorf("fail create table, %w", err)
+	}
+
+	return nil
 }
 
 type sqLite struct {
@@ -37,50 +54,6 @@ type sqLite struct {
 	conn   *sqlx.DB
 	config Config
 }
-
-const (
-	getEmail = `
-	SELECT
-		*
-	FROM
-		email
-	WHERE
-		id = $1		
-	`
-	listEmail = `
-	SELECT
-		*
-	FROM
-		email
-	WHERE
-		count_try_send < $1
-		AND time_send is null
-	`
-	deleteEmail = `
-		Delete 
-			email
-		WHERE 
-			id = $1`
-	initEmailFirst = `
-	INSERT INTO email (
-		from, 
-		to, 
-		subject,
-		body_type,
-		body,
-		time_registry, 
-	) VALUES ($1, $2, $3, $4, $5, $6)`
-	updateEmail = `
-	UPDATE email 
-		SET 
-    	status = ?,
-    	count_try_send = ?,
-    	time_send = ?,
-    	err = ?
-	WHERE 
-    	id = ?
-	`
-)
 
 func (s *sqLite) Update(m Message) error {
 	s.mu.Lock()
@@ -91,25 +64,30 @@ func (s *sqLite) Update(m Message) error {
 		return err
 	}
 
-	// Подготовка данных для обновления
-	var timeSend interface{}
-	if mesDB.TimeSend != 0 {
-		timeSend = mesDB.TimeSend
-	} else {
-		timeSend = nil // NULL в базе
-	}
-
-	statement, err := s.conn.Prepare(updateEmail)
+	statement, err := s.conn.Prepare(`
+	UPDATE 
+		email 
+	SET 
+		"from" = ?,
+		"to" = ?,
+		subject = ?,
+		body_type = ?,
+		body = ?,
+		status = ?
+	WHERE 
+		id = ?`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 
 	_, err = statement.Exec(
+		mesDB.From,
+		mesDB.To,
+		mesDB.Subject,
+		mesDB.BodyType,
+		mesDB.Body,
 		mesDB.Status,
-		mesDB.CountTrySend,
-		timeSend,
-		mesDB.Err,
 		mesDB.ID,
 	)
 	return err
@@ -124,12 +102,18 @@ func (s *sqLite) Get(ID int64) (*Message, error) {
 	defer cancel()
 
 	mes := &messageDB{}
-	err := s.conn.QueryRowxContext(ctx, getEmail, ID).StructScan(mes)
+	err := s.conn.QueryRowxContext(ctx, `
+	 	SELECT
+			*
+		FROM
+			email
+		WHERE
+			id = ?`, ID).StructScan(mes)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to get message: %w", err)
 	}
 
 	return convertFromDB(mes)
@@ -143,12 +127,12 @@ func (s *sqLite) List() ([]*Message, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), s.config.Sql.Timeout)
 	defer cancel()
 
-	rows, err := s.conn.QueryxContext(ctx, listEmail, s.config.Cron.CountTry)
+	rows, err := s.conn.QueryxContext(ctx, "SELECT * FROM email")
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to list messages: %w", err)
 	}
 
 	var messages []*Message
@@ -157,19 +141,18 @@ func (s *sqLite) List() ([]*Message, error) {
 		mes := &messageDB{}
 		err := rows.StructScan(mes)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to scan message: %w", err)
 		}
+
 		m, err := convertFromDB(mes)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to convert message: %w", err)
 		}
 		messages = append(messages, m)
-
 	}
 
-	err = rows.Err()
-	if err != nil {
-		return nil, err
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows iteration error: %w", err)
 	}
 
 	return messages, nil
@@ -180,7 +163,11 @@ func (s *sqLite) Delete(ID int64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	statement, err := s.conn.Prepare(deleteEmail)
+	statement, err := s.conn.Prepare(`
+		Delete FROM
+			email
+		WHERE 
+			id = ?`)
 	if err != nil {
 		return err
 	}
@@ -196,13 +183,40 @@ func (s *sqLite) Add(m Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	statement, err := s.conn.Prepare(initEmailFirst)
+	// Добавляем время регистрации
+	if m.Status == nil {
+		m.Status = make(map[string]any)
+	}
+	m.Status["time_registry"] = time.Now().Unix()
+	m.Status["count_try_send"] = 0 // Инициализируем счетчик попыток
+
+	mesDB, err := convertToDB(&m)
+	if err != nil {
+		return err
+	}
+
+	statement, err := s.conn.Prepare(`
+	INSERT INTO email (
+		"from", 
+		"to", 
+		subject,
+		body_type,
+		body,
+		status
+	) VALUES (?, ?, ?, ?, ?, ?)`)
 	if err != nil {
 		return err
 	}
 	defer statement.Close()
 
-	_, err = statement.Exec(m.From, m.To, m.Subject, m.TypeBody, m.Body, time.Now().Unix())
+	_, err = statement.Exec(
+		mesDB.From,
+		mesDB.To,
+		mesDB.Subject,
+		mesDB.BodyType,
+		mesDB.Body,
+		mesDB.Status,
+	)
 	return err
 }
 
@@ -227,32 +241,6 @@ func startSQL(config Config) (*sqLite, error) {
 	return &sqLite{conn: conn, config: config}, nil
 }
 
-func migration(conn *sqlx.DB) error {
-
-	_, err := conn.Exec(`
-CREATE TABLE IF NOT EXISTS email (
-
-    id INTEGER PRIMARY KEY AUTOINCREMENT
-        NOT NULL,
-    from TEXT NOT NULL,
-    to TEXT NOT NULL,
-    subject TEXT NOT NULL,
-    body_type TEXT NOT NULL,
-    body TEXT NOT NULL,
-    time_registry INTEGER NOT NULL,
-
-	count_try_send INTEGER,
-    time_send INTEGER,
-    err TEXT
-
-);`)
-	if err != nil {
-		return fmt.Errorf("fail create table, %w", err)
-	}
-
-	return nil
-}
-
 // checkFileBD - check dir and file exist
 func checkFileBD(path, fileName string) (string, error) {
 
@@ -271,65 +259,77 @@ func checkFileBD(path, fileName string) (string, error) {
 }
 
 func connectSqLite(dataSourcePath string) (*sqlx.DB, error) {
-	return sqlx.Open("sqlite3", dataSourcePath)
+	return sqlx.Open("sqlite", dataSourcePath)
 }
 
 func convertFromDB(mes *messageDB) (*Message, error) {
-
 	m := &Message{
 		ID:       strconv.FormatInt(mes.ID, 10),
 		From:     mes.From,
 		To:       mes.To,
 		Subject:  mes.Subject,
-		TypeBody: mes.TypeBody,
-		Body:     mes.TypeBody,
+		BodyType: mes.BodyType,
+		Body:     mes.Body,
 	}
 
-	status, err := ujt.UnmarshaledJSONToMap(mes.Status)
-	if err != nil {
-		return nil, err
+	// Десериализация статуса из JSON
+	if len(mes.Status) > 0 {
+		status := make(map[string]any)
+		if err := json.Unmarshal(mes.Status, &status); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal status: %w", err)
+		}
+		m.Status = status
+	} else {
+		m.Status = make(map[string]any)
 	}
-
-	m.Status = status
 
 	return m, nil
 }
+
 func convertToDB(mes *Message) (*messageDB, error) {
-	id, err := strconv.ParseInt(mes.ID, 10, 64)
-	if err != nil {
-		return nil, fmt.Errorf("invalid ID format: %w", err)
+
+	result := &messageDB{
+		From:     mes.From,
+		To:       mes.To,
+		Subject:  mes.Subject,
+		BodyType: mes.BodyType,
+		Body:     mes.Body,
 	}
 
-	var statusJSON []byte
-	if mes.Status != nil {
-		statusJSON, err = json.Marshal(mes.Status)
+	if mes.ID != "" {
+		var err error
+		result.ID, err = strconv.ParseInt(mes.ID, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("failed to marshal status: %w", err)
+			return nil, fmt.Errorf("invalid ID format: %w", err)
 		}
+
 	}
 
-	// ger err? from status
-	var errMsg string
-	if errVal, ok := mes.Status["error"]; ok {
-		if errStr, ok := errVal.(string); ok {
-			errMsg = errStr
-		}
+	// Добавляем обязательные поля в статус
+	if mes.Status == nil {
+		mes.Status = make(map[string]any)
 	}
 
-	// get counter, from status
-	countTry, _ := mes.Status["count_try_send"].(int)
-	timeSend, _ := mes.Status["time_send"].(int64)
+	// Сериализация статуса в JSON
+	statusJSON, err := json.Marshal(mes.Status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal status: %w", err)
+	}
 
-	return &messageDB{
-		ID:           id,
-		From:         mes.From,
-		To:           mes.To,
-		Subject:      mes.Subject,
-		TypeBody:     mes.TypeBody,
-		Body:         mes.Body,
-		Status:       statusJSON,
-		CountTrySend: countTry,
-		TimeSend:     timeSend,
-		Err:          errMsg,
-	}, nil
+	if len(statusJSON) > 0 {
+		result.Status = statusJSON
+	}
+
+	return result, nil
+}
+func (s *sqLite) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.conn != nil {
+		err := s.conn.Close()
+		s.conn = nil
+		return err
+	}
+	return nil
 }
