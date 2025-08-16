@@ -48,8 +48,38 @@ type SqlConf struct {
 	Timeout time.Duration
 }
 
+const (
+	defaultCronCountTry                = 100
+	defaultCronDurationSaveFailMessage = 24 * time.Hour
+	defaultCronDurationRetry           = 5 * time.Minute
+	defaultSqlBaseName                 = "email.sqlite"
+	defaultSqlTimeout                  = 5 * time.Second
+	defaultSqlPath                     = "."
+)
+
 func checkDefaultConfig(cgf Config) Config {
 
-	// TODO: implementation
+	// Cron
+	if cgf.Cron.DurationRetry == 0 {
+		cgf.Cron.DurationRetry = defaultCronCountTry
+	}
+	if cgf.Cron.DurationSaveFailMessage == 0 {
+		cgf.Cron.DurationSaveFailMessage = defaultCronDurationSaveFailMessage
+	}
+	if cgf.Cron.CountTry == 0 {
+		cgf.Cron.CountTry = defaultCronCountTry
+	}
+
+	// Sql
+	if cgf.Sql.BaseName == "" {
+		cgf.Sql.BaseName = defaultSqlBaseName
+	}
+	if cgf.Sql.Timeout == 0 {
+		cgf.Sql.Timeout = defaultSqlTimeout
+	}
+	if cgf.Sql.Path == "" {
+		cgf.Sql.Path = defaultSqlPath
+	}
+
 	return cgf
 }
