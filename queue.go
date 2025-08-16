@@ -7,9 +7,9 @@ import (
 type Queue struct {
 	config Config
 
-	emailServer *emailServer
-	sql         *sqLite
-	cron        *cron
+	emailSender emailSender
+	store       messageStore
+	cron        cronService
 }
 
 func New(cgf Config) (*Queue, error) {
@@ -35,24 +35,24 @@ func New(cgf Config) (*Queue, error) {
 
 // Add delayed dispatch
 func (q *Queue) Add(message Message) error {
-	return q.sql.Add(message)
+	return q.store.Add(message)
 }
 
 // Send immediate dispatch
 func (q *Queue) Send(message Message) error {
 
-	err := q.emailServer.Send(message)
+	err := q.emailSender.Send(message)
 	if err == nil {
 		return nil
 	}
 
-	return q.sql.Add(message)
+	return q.store.Add(message)
 }
 
 // Get  get a specific message
 func (q *Queue) Get(ID int64) (*Message, error) {
 
-	msgPtr, err := q.sql.Get(ID)
+	msgPtr, err := q.store.Get(ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get message: %w", err)
 	}
@@ -63,7 +63,7 @@ func (q *Queue) Get(ID int64) (*Message, error) {
 // List get list of messages
 func (q *Queue) List() ([]*Message, error) {
 
-	msgPtrs, err := q.sql.List()
+	msgPtrs, err := q.store.List()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list messages: %w", err)
 	}
@@ -73,7 +73,7 @@ func (q *Queue) List() ([]*Message, error) {
 
 // Delete delete a specific message
 func (q *Queue) Delete(ID int64) error {
-	return q.sql.Delete(ID)
+	return q.store.Delete(ID)
 }
 
 func (q *Queue) Stop() {

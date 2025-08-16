@@ -10,36 +10,6 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockEmailSender implements the interface emailSender
-type MockEmailSender struct {
-	mock.Mock
-}
-
-func (m *MockEmailSender) Send(msg Message) error {
-	args := m.Called(msg)
-	return args.Error(0)
-}
-
-// MockMessageStore implements the interface messageStore
-type MockMessageStore struct {
-	mock.Mock
-}
-
-func (m *MockMessageStore) List() ([]*Message, error) {
-	args := m.Called()
-	return args.Get(0).([]*Message), args.Error(1)
-}
-
-func (m *MockMessageStore) Update(msg Message) error {
-	args := m.Called(msg)
-	return args.Error(0)
-}
-
-func (m *MockMessageStore) Delete(id int64) error {
-	args := m.Called(id)
-	return args.Error(0)
-}
-
 func TestCron_ProcessMessages_Sequential(t *testing.T) {
 	emailMock := &MockEmailSender{}
 	storeMock := &MockMessageStore{}

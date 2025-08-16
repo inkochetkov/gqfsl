@@ -130,12 +130,3 @@ func (c *cron) checkForDeletion(msg *Message) {
 		}
 	}
 }
-
-type emailSender interface {
-	Send(message Message) error
-}
-type messageStore interface {
-	List() ([]*Message, error)
-	Update(message Message) error
-	Delete(id int64) error
-}
