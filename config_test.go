@@ -21,7 +21,7 @@ func TestCheckDefaultConfig(t *testing.T) {
 			},
 			expected: Config{
 				Sql: SqlConf{
-					BaseName: "email.sqlite",
+					BaseName: "email",
 					Timeout:  5 * time.Second,
 					Path:     ".",
 				},
@@ -36,7 +36,8 @@ func TestCheckDefaultConfig(t *testing.T) {
 			name: "Partial defaults",
 			input: Config{
 				Sql: SqlConf{
-					Timeout: 10 * time.Second,
+					BaseName: "non",
+					Timeout:  10 * time.Second,
 				},
 				Cron: CronConf{
 					DurationRetry: 10 * time.Minute,
@@ -45,7 +46,7 @@ func TestCheckDefaultConfig(t *testing.T) {
 			},
 			expected: Config{
 				Sql: SqlConf{
-					BaseName: "email.sqlite",
+					BaseName: "non",
 					Timeout:  10 * time.Second,
 					Path:     ".",
 				},

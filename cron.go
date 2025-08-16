@@ -9,17 +9,17 @@ import (
 
 type cron struct {
 	config      Config
-	emailServer *emailServer
-	sql         *sqLite
+	emailSender emailSender
+	store       messageStore
 	stopChan    chan struct{}
 	wg          sync.WaitGroup
 }
 
-func startCron(config Config, emailServer *emailServer, sql *sqLite) (*cron, error) {
+func startCron(config Config, emailSender emailSender, store messageStore) (*cron, error) {
 	c := &cron{
 		config:      config,
-		emailServer: emailServer,
-		sql:         sql,
+		emailSender: emailSender,
+		store:       store,
 		stopChan:    make(chan struct{}),
 	}
 
@@ -52,7 +52,7 @@ func (c *cron) Stop() {
 
 func (c *cron) processMessages() {
 
-	messages, err := c.sql.List()
+	messages, err := c.store.List()
 	if err != nil {
 		log.Printf("cron: failed to get messages: %v\n", err)
 		return
@@ -77,46 +77,65 @@ func (c *cron) processMessages() {
 	}
 }
 
-func (c *cron) processMessage(msg *Message) {
+// cron.go
 
+func (c *cron) processMessage(msg *Message) {
 	if msg.Status == nil {
 		msg.Status = make(map[string]any)
 	}
 
 	// Updating the attempt counter
+	if status, ok := msg.Status["status"]; ok && status == "sent" {
+		c.checkForDeletion(msg)
+		return
+	}
+
+	// Обработка неотправленных сообщений
 	count, _ := msg.Status["count_try_send"].(float64)
 	msg.Status["count_try_send"] = count + 1
-
 	// Trying to send a message
-	err := c.emailServer.Send(*msg)
+	err := c.emailSender.Send(*msg)
 	if err != nil {
-		// Remember the mistake
 		msg.Status["error"] = err.Error()
 		msg.Status["last_try"] = time.Now().Unix()
-		// log.Printf("cron: failed to send message %s: %v\n", msg.ID, err)
 	} else {
-		// Successful Sending Mark
 		msg.Status["time_send"] = time.Now().Unix()
 		msg.Status["status"] = "sent"
 		delete(msg.Status, "error")
-		// log.Printf("cron: successfully sent message %s\n", msg.ID)
 	}
 
-	// Updating the message in the database
-	if err := c.sql.Update(*msg); err != nil {
+	if err := c.store.Update(*msg); err != nil {
 		log.Printf("cron: failed to update message %s: %v\n", msg.ID, err)
 	}
 
 	// Clearing successfully sent messages
-	if c.config.Cron.DurationSaveSuccess > 0 && msg.Status["status"] == "sent" {
-		if time.Since(time.Unix(msg.Status["time_send"].(int64), 0)) > c.config.Cron.DurationSaveSuccess {
-			id, err := strconv.ParseInt(msg.ID, 10, 64)
-			if err != nil {
-				log.Printf("id message failed convert, %s", msg.ID)
-			}
-			if err := c.sql.Delete(id); err != nil {
-				log.Printf("cron: failed to delete message %s: %v\n", msg.ID, err)
+	if msg.Status["status"] == "sent" {
+		c.checkForDeletion(msg)
+	}
+}
+
+func (c *cron) checkForDeletion(msg *Message) {
+	if c.config.Cron.DurationSaveSuccess > 0 {
+		if timeSend, ok := msg.Status["time_send"].(int64); ok {
+			if time.Since(time.Unix(timeSend, 0)) > c.config.Cron.DurationSaveSuccess {
+				id, err := strconv.ParseInt(msg.ID, 10, 64)
+				if err != nil {
+					log.Printf("id message failed convert, %s", msg.ID)
+					return
+				}
+				if err := c.store.Delete(id); err != nil {
+					log.Printf("cron: failed to delete message %s: %v\n", msg.ID, err)
+				}
 			}
 		}
 	}
+}
+
+type emailSender interface {
+	Send(message Message) error
+}
+type messageStore interface {
+	List() ([]*Message, error)
+	Update(message Message) error
+	Delete(id int64) error
 }

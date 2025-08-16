@@ -75,6 +75,7 @@ func (q *Queue) List() ([]*Message, error) {
 func (q *Queue) Delete(ID int64) error {
 	return q.sql.Delete(ID)
 }
+
 func (q *Queue) Stop() {
 	if q.cron != nil {
 		q.cron.Stop()

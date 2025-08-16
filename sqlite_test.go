@@ -14,7 +14,7 @@ func TestSQLiteCRUD(t *testing.T) {
 	// Setup in-memory database
 	cfg := Config{
 		Sql: SqlConf{
-			BaseName: "email",
+			BaseName: "queue",
 			Timeout:  1 * time.Second,
 			Path:     "./",
 		},
@@ -105,7 +105,7 @@ func TestSQLiteCRUD(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	err = os.Remove("email.sqlite")
+	err = os.Remove("queue.sqlite")
 	if err != nil {
 		log.Fatal(err)
 	}

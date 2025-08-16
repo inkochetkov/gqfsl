@@ -9,7 +9,7 @@ GQFSL - implements a sending system that guarantees that if a letter cannot be s
 # Dependencies
 
 - email send - [gomail](https://github.com/go-gomail/gomail)
-- cron - [gocron](https://github.com/go-co-op/gocron)
+- sqlite - ["modernc.org/sqlite"](https://pkg.go.dev/modernc.org/sqlite)
 
 # License
 
