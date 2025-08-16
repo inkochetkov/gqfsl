@@ -3,6 +3,7 @@ package gqfsl
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	p "path"
 	"strconv"
@@ -25,6 +26,10 @@ type messageDB struct {
 	Body     string `db:"body"`
 
 	Status []byte `db:"status"`
+
+	CountTrySend int    `db:"count_try_send"`
+	TimeSend     int64  `db:"time_send"`
+	Err          string `db:"err"`
 }
 
 type sqLite struct {
@@ -65,14 +70,49 @@ const (
 		body,
 		time_registry, 
 	) VALUES ($1, $2, $3, $4, $5, $6)`
+	updateEmail = `
+	UPDATE email 
+		SET 
+    	status = ?,
+    	count_try_send = ?,
+    	time_send = ?,
+    	err = ?
+	WHERE 
+    	id = ?
+	`
 )
 
 func (s *sqLite) Update(m Message) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// TODO: implementation
-	return nil
+	mesDB, err := convertToDB(&m)
+	if err != nil {
+		return err
+	}
+
+	// Подготовка данных для обновления
+	var timeSend interface{}
+	if mesDB.TimeSend != 0 {
+		timeSend = mesDB.TimeSend
+	} else {
+		timeSend = nil // NULL в базе
+	}
+
+	statement, err := s.conn.Prepare(updateEmail)
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
+
+	_, err = statement.Exec(
+		mesDB.Status,
+		mesDB.CountTrySend,
+		timeSend,
+		mesDB.Err,
+		mesDB.ID,
+	)
+	return err
 }
 
 func (s *sqLite) Get(ID int64) (*Message, error) {
@@ -253,4 +293,43 @@ func convertFromDB(mes *messageDB) (*Message, error) {
 	m.Status = status
 
 	return m, nil
+}
+func convertToDB(mes *Message) (*messageDB, error) {
+	id, err := strconv.ParseInt(mes.ID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid ID format: %w", err)
+	}
+
+	var statusJSON []byte
+	if mes.Status != nil {
+		statusJSON, err = json.Marshal(mes.Status)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal status: %w", err)
+		}
+	}
+
+	// ger err? from status
+	var errMsg string
+	if errVal, ok := mes.Status["error"]; ok {
+		if errStr, ok := errVal.(string); ok {
+			errMsg = errStr
+		}
+	}
+
+	// get counter, from status
+	countTry, _ := mes.Status["count_try_send"].(int)
+	timeSend, _ := mes.Status["time_send"].(int64)
+
+	return &messageDB{
+		ID:           id,
+		From:         mes.From,
+		To:           mes.To,
+		Subject:      mes.Subject,
+		TypeBody:     mes.TypeBody,
+		Body:         mes.Body,
+		Status:       statusJSON,
+		CountTrySend: countTry,
+		TimeSend:     timeSend,
+		Err:          errMsg,
+	}, nil
 }
