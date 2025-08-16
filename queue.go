@@ -1,5 +1,9 @@
 package gqfsl
 
+import (
+	"fmt"
+)
+
 type Queue struct {
 	config Config
 
@@ -47,15 +51,25 @@ func (q *Queue) Send(message Message) error {
 }
 
 // Get  get a specific message
-func (q *Queue) Get(ID int64) (Message, error) {
-	// TODO: implementation
-	return Message{}, nil
+func (q *Queue) Get(ID int64) (*Message, error) {
+
+	msgPtr, err := q.sql.Get(ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get message: %w", err)
+	}
+
+	return msgPtr, nil
 }
 
 // List get list of messages
-func (q *Queue) List() ([]Message, error) {
-	// TODO: implementation
-	return nil, nil
+func (q *Queue) List() ([]*Message, error) {
+
+	msgPtrs, err := q.sql.List()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list messages: %w", err)
+	}
+
+	return msgPtrs, nil
 }
 
 // Delete delete a specific message
