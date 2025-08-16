@@ -26,11 +26,10 @@ func New(cgf Config) (*Queue, error) {
 		return nil, err
 	}
 
-	cron, err := startCron(config)
+	cron, err := startCron(config, emailServer, sql)
 	if err != nil {
 		return nil, err
 	}
-
 	return &Queue{config, emailServer, sql, cron}, nil
 }
 
@@ -75,4 +74,9 @@ func (q *Queue) List() ([]*Message, error) {
 // Delete delete a specific message
 func (q *Queue) Delete(ID int64) error {
 	return q.sql.Delete(ID)
+}
+func (q *Queue) Stop() {
+	if q.cron != nil {
+		q.cron.Stop()
+	}
 }
